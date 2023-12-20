@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook XML V4.5//EN"
+                 "http://www.oasis-open.org/docbook/xml/4.5/docbookx.dtd">
+<book>
+<title>Eccelerators Library IP specification</title>
+<chapter id="Eccelerators-Library-IP-BusDividerIfc-composite">
+<title>BusDividerIfc</title>
+<xi:include xmlns:xi="http://www.w3.org/2001/XInclude"  href="Eccelerators.Library.IP.BusDividerIfc-composite.xml" />
+</chapter>
+</book>
