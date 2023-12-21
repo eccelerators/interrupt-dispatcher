@@ -34,146 +34,57 @@ library ieee;
 library eccelerators;
     use eccelerators.basic.all;
     
-entity BusJoinWishbone is
+entity InterruptDispatcher is
+    generic (
+        NUMBER_OF_OUTPUTS : positive := 2
+    );
 	port (
 		Clk : in std_logic;
 		Rst : in std_logic;
-		Cyc : in  std_logic_vector;
-		Adr : in array_of_std_logic_vector;
-		Sel : in array_of_std_logic_vector;
-		We : in std_logic_vector;
-		Stb : in std_logic_vector;
-        DatIn : in array_of_std_logic_vector;
-		DatOut : out array_of_std_logic_vector;
-		Ack : out std_logic_vector;	
-        JoinCyc : out std_logic;
-		JoinAdr : out std_logic_vector;
-		JoinSel : out std_logic_vector;
-		JoinWe : out std_logic;
-		JoinStb : out std_logic;
-		JoinDatOut : out std_logic_vector;
-		JoinDatIn: in std_logic_vector;
-		JoinAck : in std_logic
+		InterruptInToDispatch : in std_logic;
+		InterruptsOutToCpus : out  std_logic_vector
 	);
 end entity;
 
-architecture Behavioural of BusJoinWishbone is
+architecture Behavioural of InterruptDispatcher is
 
-    constant BUSSES_LENGTH : natural := Cyc'length;
-    constant BUSSES_LEFT : natural := BUSSES_LENGTH - 1;
+    constant OUT_LENGTH : natural := InterruptsOutToCpus'length;
+    constant OUT_LEFT : natural := OUT_LENGTH - 1;
     
-    constant BUSSES_COUNT_LENGTH : natural := array_element_counter_length(Cyc);
-    constant BUSSES_COUNT_LEFT : natural := BUSSES_COUNT_LENGTH - 1;
+    constant OUT_COUNT_LENGTH : natural := array_element_counter_length(InterruptsOutToCpus);
+    constant OUT_COUNT_LEFT : natural := OUT_COUNT_LENGTH - 1;
     
-    type T_State is (Idle, Cycle);
-      
-    function resolveCycleRequests (
-        CycleRequests : std_logic_vector(BUSSES_LEFT downto 0);
-        MissCountTable : array_of_unsigned(BUSSES_LEFT downto 0)
-    ) return integer is
-        variable GreatestMissCount: integer := 0;
-        variable SelectedRequest: integer := -1; 
-    begin
-        for i in 0 to BUSSES_LEFT loop
-            if CycleRequests(i) then
-                if MissCountTable(i) > GreatestMissCount then
-                    GreatestMissCount := to_integer(MissCountTable(i));
-                end if;
-            end if;
-        end loop;
-        for i in 0 to BUSSES_LEFT loop
-            if CycleRequests(i) then
-                if MissCountTable(i) = GreatestMissCount then
-                    SelectedRequest := i;
-                end if;
-            end if;
-        end loop;
-        return SelectedRequest;
-    end function;
-    
-    signal MissCountTable : array_of_unsigned(BUSSES_LEFT downto 0) (BUSSES_COUNT_LEFT downto 0);
-    signal SelectedBus : unsigned(BUSSES_COUNT_LEFT downto 0); 
-    signal State : T_State;
-    signal StateNumbered : unsigned(0 downto 0);
+    signal SelectedOut : unsigned(OUT_COUNT_LEFT downto 0);
+    signal InterruptInSequence : std_logic_vector(1 downto 0);
 
 begin
-
-    -- For GHDL and HW debug
-    prcNumberStates : process(State) is
+      
+    prcDispatch : process (Clk, Rst) is      
     begin
-        case State is
-            when Idle =>
-                StateNumbered <= to_unsigned(0, StateNumbered'length);
-            when Cycle =>
-                StateNumbered <= to_unsigned(1, StateNumbered'length);
-        end case;
-    end process;
-
-    genDataOut : for i in 0 to BUSSES_COUNT_LEFT generate
-        DatOut(i) <= JoinDatIn;
-    end generate;
-     
-     
-    prcAck : process(JoinAck, SelectedBus) is
-    begin
-        Ack <= std_logic_vector(to_unsigned(0, Ack'length));
-        for i in 0 to BUSSES_COUNT_LEFT loop
-            if i = to_integer(SelectedBus) then
-                Ack(i) <= JoinAck;
-            end if;
-        end loop;
-    end process;
-         
-    prcJoin : process ( Clk, Rst) is
-        variable ri : integer := 0;
-    begin
+    
         if Rst then
         
-            SelectedBus <= (others => '0');
-            JoinCyc <= '0';                   
-            JoinAdr <= std_logic_vector(to_unsigned(0, JoinAdr'length));
-            JoinSel <= std_logic_vector(to_unsigned(0, JoinSel'length));
-            JoinWe <= '0';
-            JoinStb <= '0';
-            JoinDatOut <= std_logic_vector(to_unsigned(0, JoinDatOut'length));
-            MissCountTable <= (others => (others => '0'));
-            
+            InterruptsOutToCpus <= std_logic_vector(to_unsigned(0, OUT_LENGTH));
+            SelectedOut <= (others => '0');     
+            InterruptInSequence  <= (others => '0');
+                              
         elsif rising_edge(Clk) then
+        
+            InterruptInSequence <=  InterruptInSequence(0) & InterruptInToDispatch;
             
-            case State is
+            if InterruptInSequence = "01" then
+                InterruptsOutToCpus(to_integer(SelectedOut)) <= '1';
+            end if;
             
-                when Idle =>
-                    ri := resolveCycleRequests(Cyc, MissCountTable);
-                    if ri >= 0 then       
-                        SelectedBus <= to_unsigned(ri, BUSSES_COUNT_LENGTH);
-                        JoinCyc <= '1';                   
-                        JoinAdr <= Adr(ri);
-                        JoinSel <= Sel(ri);
-                        JoinWe <= We(ri);
-                        JoinStb <= Stb(ri);
-                        JoinDatOut <= DatIn(ri);
-                        MissCountTable(ri) <= (others => '0');      
-                        for i in 0 to BUSSES_LEFT loop
-                            if Cyc(i) = '1' and (i /= ri) then
-                                MissCountTable(i) <= MissCountTable(i) + 1;
-                            end if;
-                        end loop;
-                        State <= Cycle;
-                    end if;
+            if InterruptInSequence = "10" then
+                InterruptsOutToCpus(to_integer(SelectedOut)) <= '0';
+                if SelectedOut < to_unsigned(NUMBER_OF_OUTPUTS - 1, OUT_COUNT_LENGTH) then
+                    SelectedOut <= SelectedOut + 1;
+                else 
+                    SelectedOut <= to_unsigned(0, OUT_COUNT_LENGTH);           
+                end if;
+            end if;
 
-                when Cycle =>
-                    if JoinAck then
-                        JoinCyc <= '0';
-                        JoinAdr <= std_logic_vector(to_unsigned(0, JoinAdr'length));
-                        JoinSel <= std_logic_vector(to_unsigned(0, JoinSel'length));
-                        JoinWe <= '0';
-                        JoinStb <= '0';
-                        JoinDatOut <= std_logic_vector(to_unsigned(0, JoinDatOut'length));
-                        State <= Idle;
-                    end if;
-                
-            end case;  
- 
         end if;     
     end process;
 
