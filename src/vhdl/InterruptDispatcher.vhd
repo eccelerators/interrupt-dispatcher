@@ -31,8 +31,7 @@ library ieee;
 	use ieee.std_logic_1164.all;
 	use ieee.numeric_std.all;
 	
-library eccelerators;
-    use eccelerators.basic.all;
+use work.basic.all;
     
 entity InterruptDispatcher is
     generic (
@@ -42,7 +41,9 @@ entity InterruptDispatcher is
 		Clk : in std_logic;
 		Rst : in std_logic;
 		InterruptInToDispatch : in std_logic;
-		InterruptsOutToCpus : out  std_logic_vector
+		InterruptsEnableFromCpus : in std_logic_vector;
+		InterruptsBusyFromCpus : in std_logic_vector;
+		InterruptsOutToCpus : out std_logic_vector
 	);
 end entity;
 
@@ -55,7 +56,8 @@ architecture Behavioural of InterruptDispatcher is
     constant OUT_COUNT_LEFT : natural := OUT_COUNT_LENGTH - 1;
     
     signal SelectedOut : unsigned(OUT_COUNT_LEFT downto 0);
-    signal InterruptInSequence : std_logic_vector(1 downto 0);
+    signal RotatingHighestPriority : unsigned(OUT_COUNT_LEFT downto 0);
+    signal InterruptInHistory : std_logic_vector(1 downto 0);
 
 begin
       
@@ -66,17 +68,17 @@ begin
         
             InterruptsOutToCpus <= std_logic_vector(to_unsigned(0, OUT_LENGTH));
             SelectedOut <= (others => '0');     
-            InterruptInSequence  <= (others => '0');
+            InterruptInHistory  <= (others => '0');
                               
         elsif rising_edge(Clk) then
         
-            InterruptInSequence <=  InterruptInSequence(0) & InterruptInToDispatch;
+            InterruptInHistory <=  InterruptInHistory(0) & InterruptInToDispatch;
             
-            if InterruptInSequence = "01" then
+            if InterruptInHistory = "01" then
                 InterruptsOutToCpus(to_integer(SelectedOut)) <= '1';
             end if;
             
-            if InterruptInSequence = "10" then
+            if InterruptInHistory = "10" then
                 InterruptsOutToCpus(to_integer(SelectedOut)) <= '0';
                 if SelectedOut < to_unsigned(NUMBER_OF_OUTPUTS - 1, OUT_COUNT_LENGTH) then
                     SelectedOut <= SelectedOut + 1;
